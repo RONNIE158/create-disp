@@ -10,11 +10,13 @@ add_executable(create-disp create-disp.cpp)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBDRM REQUIRED libdrm)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
 include_directories(${LIBDRM_INCLUDE_DIRS})
 link_directories(${LIBDRM_LIBRARY_DIRS})
 
 target_include_directories(create-disp PRIVATE
+    ${SYSTEMD_INCLUDE_DIRS}
     /usr/include/libdrm
     /usr/include/android
 )
@@ -26,4 +28,5 @@ target_link_libraries(create-disp
     hybris-platformcommon
     gralloc
     ${LIBDRM_LIBRARIES}
+    ${SYSTEMD_LIBRARIES}
 )

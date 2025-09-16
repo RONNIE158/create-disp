@@ -1,12 +1,15 @@
 [Unit]
 Description=Lindroid create disp service
-After=sysinit.target
+Before=display-manager.service
+After=systemd-user-sessions.service systemd-logind.service
 
 [Service]
+Type=notify
+NotifyAccess=main
 Restart=always
 RestartSec=1
 User=lindroid
 ExecStart=/usr/bin/create-disp
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=display-manager.service

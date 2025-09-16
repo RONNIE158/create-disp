@@ -2,7 +2,7 @@ Source: create-disp
 Section: utils
 Priority: optional
 Maintainer: luka177 <lukapanio@gmail.com>
-Build-Depends: debhelper-compat (= 13), cmake, g++, libdrm-dev, libhybris-dev, pkg-config
+Build-Depends: debhelper-compat (= 13), cmake, g++, libdrm-dev, libhybris-dev, pkg-config, libsystemd-dev
 Standards-Version: 4.6.2
 
 Package: create-disp

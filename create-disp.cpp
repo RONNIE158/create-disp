@@ -13,6 +13,9 @@
 #include <fstream>
 #include <cmath>
 #include <climits>
+#include <chrono>
+
+#include <systemd/sd-daemon.h>
 
 #include <hybris/hwc2/hwc2_compatibility_layer.h>
 #include <hybris/gralloc/gralloc.h>
@@ -448,6 +451,8 @@ int main() {
     int composerSequenceId = 0;
     int ret =0;
 
+    sd_notifyf(0, "MAINPID=%lu", (unsigned long)getpid());
+    sd_notify(0, "STATUS=Initializing create-disp…");
     hwcDevice = hwc2_compat_device_new(false);
     assert(hwcDevice);
 
@@ -500,6 +505,9 @@ int main() {
               << "@" << refresh_hz << "Hz 'Lindroid display' written successfully."
               << std::endl;
 
+    sd_notify(0, "READY=1");
+    sd_notify(0, "STATUS=create-disp ready.");
+
     drm_evdi_poll poll_cmd;
     poll_cmd.data = malloc(1024);
 
@@ -529,5 +537,6 @@ int main() {
 
     free(poll_cmd.data);
     close(fd);
+    sd_notify(0, "STATUS=Shutting down…");
     return EXIT_SUCCESS;
 }
