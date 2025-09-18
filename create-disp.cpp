@@ -69,6 +69,7 @@ struct HandleInfo {
 
 hwc2_compat_display_t* hwcDisplay;
 hwc2_compat_device_t* hwcDevice;
+static std::unordered_map<int, std::unique_ptr<RemoteWindowBuffer>> buffers_map;
 std::unordered_map<int, std::unique_ptr<native_handle_t>> handles_map;
 int global_width, global_height;
 uint32_t global_stride;
@@ -386,9 +387,17 @@ void swap_to_buff(void *data, int poll_id, int drm_fd) {
                 goto done;
         } 
 
-	uint32_t  stride;
-
-        buf = new RemoteWindowBuffer(global_width, global_height, global_stride, HAL_PIXEL_FORMAT_RGBA_8888, GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER, in_handle);
+	{
+	auto it_buf = buffers_map.find(id);
+	if (it_buf == buffers_map.end()) {
+		auto new_buf = std::make_unique<RemoteWindowBuffer>(
+			global_width, global_height, global_stride,
+			HAL_PIXEL_FORMAT_RGBA_8888,
+			GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER, in_handle);
+		buf = new_buf.get();
+		buffers_map[id] = std::move(new_buf);
+	} else { buf = it_buf->second.get(); }
+	}
 	hwc2_error_t error;
         hwc2_compat_display_set_client_target(hwcDisplay, /* slot */0, buf,
                                               -1,
@@ -412,6 +421,7 @@ void destroy_buff(void *data, int poll_id, int drm_fd) {
         if(handle) {
                 native_handle_close(handle);
         }
+	buffers_map.erase(id);
         handles_map.erase(id);
         struct drm_evdi_destroy_buff_callback cmd = {.poll_id=poll_id};
         ret=ioctl(drm_fd, DRM_IOCTL_EVDI_DESTROY_BUFF_CALLBACK, &cmd);
