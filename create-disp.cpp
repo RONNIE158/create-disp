@@ -69,7 +69,20 @@ struct HandleInfo {
 
 hwc2_compat_display_t* hwcDisplay;
 hwc2_compat_device_t* hwcDevice;
-std::unordered_map<int, std::unique_ptr<native_handle_t>> handles_map;
+static std::unordered_map<int, std::unique_ptr<RemoteWindowBuffer>> buffers_map;
+static std::unordered_map<int, std::unique_ptr<native_handle_t>> handles_map;
+static std::unordered_map<std::string, int> handle_index;
+static inline std::string make_handle_key(const native_handle_t* h) {
+	const int total_ints = h->numInts;
+	const size_t key_bytes = (3 + total_ints) * sizeof(int);
+	std::string key(key_bytes, '\0');
+	size_t off = 0;
+	memcpy(&key[off], &h->version, sizeof(int)); off += sizeof(int);
+	memcpy(&key[off], &h->numFds, sizeof(int));  off += sizeof(int);
+	memcpy(&key[off], &h->numInts, sizeof(int)); off += sizeof(int);
+	memcpy(&key[off], &h->data[h->numFds], total_ints * sizeof(int));
+	return key;
+}
 int global_width, global_height;
 uint32_t global_stride;
 int next_id = 0;
@@ -337,19 +350,19 @@ void add_buf_to_map(void *data, int poll_id, int drm_fd) {
         return;
     }
 
-    for (const auto& [existing_id, existing_handle] : handles_map) {
-        if (existing_handle->version == header[0] &&
-            existing_handle->numFds == header[1] &&
-            existing_handle->numInts == header[2] &&
-            memcmp(existing_handle->data + (header[1]* sizeof(int)), full_handle->data+ (header[1]* sizeof(int)), 
-                   (header[2]) * sizeof(int)) == 0) {
-            printf("Identical buffer found, returning existing id: %d\n", existing_id);
-            id=existing_id;
+    {
+        const std::string key = make_handle_key(full_handle);
+        auto it = handle_index.find(key);
+        if (it != handle_index.end()) {
+            printf("Identical buffer found, returning existing id: %d\n", it->second);
+            id = it->second;
+            free(full_handle);
         }
-    }
-
-    if(id == -1) {
-        id = add_handle(*full_handle);
+        if (id == -1) {
+            id = add_handle(*full_handle);
+            handle_index.emplace(key, id);
+            free(full_handle);
+        }
     }
 
     close(fd);  
@@ -386,9 +399,17 @@ void swap_to_buff(void *data, int poll_id, int drm_fd) {
                 goto done;
         } 
 
-	uint32_t  stride;
-
-        buf = new RemoteWindowBuffer(global_width, global_height, global_stride, HAL_PIXEL_FORMAT_RGBA_8888, GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER, in_handle);
+	{
+	auto it_buf = buffers_map.find(id);
+	if (it_buf == buffers_map.end()) {
+		auto new_buf = std::make_unique<RemoteWindowBuffer>(
+			global_width, global_height, global_stride,
+			HAL_PIXEL_FORMAT_RGBA_8888,
+			GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER, in_handle);
+		buf = new_buf.get();
+		buffers_map[id] = std::move(new_buf);
+	} else { buf = it_buf->second.get(); }
+	}
 	hwc2_error_t error;
         hwc2_compat_display_set_client_target(hwcDisplay, /* slot */0, buf,
                                               -1,
@@ -412,6 +433,7 @@ void destroy_buff(void *data, int poll_id, int drm_fd) {
         if(handle) {
                 native_handle_close(handle);
         }
+	buffers_map.erase(id);
         handles_map.erase(id);
         struct drm_evdi_destroy_buff_callback cmd = {.poll_id=poll_id};
         ret=ioctl(drm_fd, DRM_IOCTL_EVDI_DESTROY_BUFF_CALLBACK, &cmd);
